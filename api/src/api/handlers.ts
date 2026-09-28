@@ -1,19 +1,14 @@
 import type { Request, Response } from "express";
 
-import { getHealth } from "../business/health.js";
+import { listUsers } from "../business/users.js";
+import { toUserResponse } from "./convert.js";
+import type { UserResponse } from "./models.js";
 
-interface HealthResponse {
-  status: "ok";
-}
-
-export function getHealthHandler(
+export function listUsersHandler(
   _request: Request,
-  response: Response<HealthResponse>,
+  response: Response<UserResponse[]>,
 ): void {
-  const health = getHealth();
-  const body: HealthResponse = {
-    status: health.status,
-  };
+  const users = listUsers();
 
-  response.status(200).json(body);
+  response.status(200).json(users.map(toUserResponse));
 }

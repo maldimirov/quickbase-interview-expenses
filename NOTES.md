@@ -24,7 +24,15 @@ API -> Business -> DB
 
 Each layer owns its models. The calling layer converts between its own models and the called layer's models. The API layer therefore converts API models to business models, and the business layer converts business models to DB models. Lower layers remain unaware of their callers.
 
-Business modules use namespace-qualified DB calls such as `db.readHealth()` so persistence operations remain explicit at each call site.
+Models are defined in each layer's `models.ts`. Conversions live in the calling layer's `convert.ts`, which keeps HTTP handlers and business operations focused on orchestration and rules. A layer does not have an empty conversion module when it has nothing to convert.
+
+API error codes and error response shapes live in `api/errors.ts` rather than alongside ordinary request and response models.
+
+The business layer owns domain enum values. API Zod schemas import those enums when the complete domain value set is also the accepted API value set, giving validation and business logic one source of truth. The API defines an explicit subset instead when an endpoint must not expose every domain value.
+
+DB records use persistence primitives such as `string` rather than repeating business enums. Business-to-DB conversion can assign string enum values directly, while DB-to-business conversion uses a localized type assertion because this in-memory store and its seed data are fully controlled. This deliberately gives up runtime protection from invalid persisted enum-like strings; a real external database may require validation for legacy, corrupted, or manually modified data.
+
+Business modules use namespace-qualified DB calls such as `db.listUsers()` so persistence operations remain explicit at each call site. API handlers use direct named business imports because their external operation calls are already unambiguously business-layer calls.
 
 - The API layer owns HTTP handling, `X-User-Id` resolution, Zod request schemas, and HTTP response mapping.
 - The business layer owns authorization, submission validation, state transitions, approval routing, and response composition.
@@ -34,7 +42,7 @@ Business modules use namespace-qualified DB calls such as `db.readHealth()` so p
 
 ### User identity
 
-The client sends the selected user in the `X-User-Id` header. API middleware resolves it to a known user before calling the business layer. Actor, requester, status, approver, and history data are never trusted from editable request fields.
+The client sends the selected user in the `X-User-Id` header. API middleware validates that the header contains a non-empty string and passes the user ID to the handler through request-scoped `response.locals`. The handler passes that ID to the business operation, which resolves the user and performs authorization. Middleware does not call the business or DB layers. Actor, requester, status, approver, and history data are never trusted from editable request fields.
 
 This models where real authentication middleware would provide a trusted current user, but the header itself is only a demo substitute for authentication.
 
@@ -47,6 +55,8 @@ The `values` boundary keeps all user-editable form data together so the API can 
 Draft fields that have no value are represented explicitly as `null`. A draft `values` object includes all fields, while submission validation decides whether the current values are complete and valid. `billable` is a non-null boolean with a default of `false`.
 
 Request data and status history are separate data structures. API detail and list responses are read models assembled by the business layer and include the latest status information without embedding the complete history.
+
+Treat the supplied seed files as source material rather than a runtime data contract. Copy the sample records into project-owned seed files that already match the in-memory DB models. Users, expense requests, and status-history entries are therefore loaded directly from separate record lists. Startup does not parse nested request events or convert the interview fixture format, because that conversion would add code without exercising the workflow business rules.
 
 The request detail response includes at least:
 
@@ -108,6 +118,10 @@ Keep approval selection in one business-layer function. It receives the requeste
 - Zod was initially questioned as unnecessary for the business-rule complexity. It was retained after clarifying that its purpose is runtime API-boundary validation, which TypeScript types alone cannot provide.
 - Automated tests with Vitest and Supertest were removed from the initial scope. Manual verification will be documented instead.
 - Status history was separated from expense request records and from the expense request history endpoint.
+- The supplied seed records are normalized once into project-owned DB-shaped seed files instead of adding runtime conversion logic for the interview fixture format.
+- Layer models and conversions were moved out of handlers and business-operation modules into dedicated `models.ts` and `convert.ts` files. DB records were reduced to storage types, while business models became the source of truth for domain enums reused by API validation.
+- User middleware was narrowed from resolving a business user to validating and forwarding only the `X-User-Id` value. Business operations own user lookup and authorization, keeping middleware within the HTTP layer.
+- The temporary health endpoint and UI status display were removed after the users endpoint provided a real end-to-end API call. The static in-memory health response had served its scaffolding purpose and no longer represented meaningful application behavior.
 - Flat request fields were considered because they map directly to relational columns. The strongly typed nested `values` shape was retained because it matches the supplied data and creates a clear validation and full-replacement boundary without requiring JSON persistence.
 - Partial `PATCH` updates were replaced by full `PUT` replacement so every editable field is resubmitted and shape-validated.
 - Per-operation workflow endpoints were replaced by one status endpoint with an enum-backed action, making later operations additive without adding routes.
@@ -135,8 +149,8 @@ The independent API and UI projects were manually verified on 2026-09-28:
 - `npm run typecheck` completed successfully in both projects.
 - `npm run build` produced `api/dist` and `ui/dist`.
 - `npm run dev` started each development server from its own project directory.
-- `GET /api/health` returned `{"status":"ok"}` directly from the API and through Vite's `/api` development proxy.
-- `npm start` ran the compiled API from `api`, whose health endpoint returned `{"status":"ok"}`.
+- `GET /api/users` returned the project-owned seed users directly from the API and through Vite's `/api` development proxy.
+- `npm start` ran the compiled API from `api`.
 - npm reported no known vulnerabilities in either project after installation.
 
 No automated tests have been added or run.

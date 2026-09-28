@@ -1,0 +1,61 @@
+export enum UserRole {
+  Employee = "employee",
+  Manager = "manager",
+  Finance = "finance",
+}
+
+export interface User {
+  id: string;
+  name: string;
+  role: UserRole;
+  managerId: string | null;
+}
+
+export enum ExpenseType {
+  Travel = "Travel",
+  Software = "Software",
+  Equipment = "Equipment",
+  Meal = "Meal",
+  Other = "Other",
+}
+
+export interface ExpenseValues {
+  expenseType: ExpenseType | null;
+  amountCents: number | null;
+  description: string | null;
+  billable: boolean;
+  client: string | null;
+  additionalJustification: string | null;
+  otherReason: string | null;
+}
+
+export interface ExpenseRequest {
+  id: string;
+  requesterId: string;
+  values: ExpenseValues;
+}
+
+export enum RequestStatus {
+  Draft = "DRAFT",
+  Submitted = "SUBMITTED",
+  Approved = "APPROVED",
+  Rejected = "REJECTED",
+}
+
+export enum RequestAction {
+  Create = "CREATE",
+  Submit = "SUBMIT",
+  Withdraw = "WITHDRAW",
+  Approve = "APPROVE",
+  Reject = "REJECT",
+}
+
+export interface StatusHistory {
+  requestId: string;
+  sequence: number;
+  action: RequestAction;
+  newStatus: RequestStatus;
+  actorId: string;
+  occurredAt: string;
+  assignedApproverId: string | null;
+}

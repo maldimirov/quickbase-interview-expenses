@@ -1,11 +1,11 @@
 import { Router } from "express";
 
-import { getHealthHandler } from "./handlers.js";
+import { listUsersHandler } from "./handlers.js";
 
 export function createApiRouter() {
   const router = Router();
 
-  router.get("/health", getHealthHandler);
+  router.get("/users", listUsersHandler);
 
   return router;
 }
