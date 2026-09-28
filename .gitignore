@@ -1,0 +1,4 @@
+my_notes.md
+node_modules/
+dist/
+*.log
