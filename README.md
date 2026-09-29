@@ -9,59 +9,46 @@ A TypeScript full-stack implementation of the Quickbase expense-request intervie
 
 ## Development
 
-Install the API dependencies:
+Install both projects' dependencies from the repository root:
 
 ```sh
-cd api
-npm install
-```
-
-Install the UI dependencies from the repository root:
-
-```sh
-cd ui
-npm install
+npm run setup
 ```
 
 Start the API in one terminal:
 
 ```sh
-cd api
-npm run dev
+npm run dev:api
 ```
 
 Start the UI in another terminal:
 
 ```sh
-cd ui
-npm run dev
+npm run dev:ui
 ```
 
 Open `http://localhost:5173`. The UI's Vite development server forwards browser requests under `/api` to the API at `http://localhost:3000`.
 
+The root package contains orchestration commands only. The API and UI retain their own dependencies, lockfiles, and npm commands.
+
 ## Verification
 
-Check and build the API:
+Check both projects:
 
 ```sh
-cd api
 npm run typecheck
+```
+
+Build both projects:
+
+```sh
 npm run build
 ```
 
-Check and build the UI from the repository root:
+Run the compiled API after building:
 
 ```sh
-cd ui
-npm run typecheck
-npm run build
+npm run start:api
 ```
 
-Run the compiled API from its project directory after building:
-
-```sh
-cd api
-npm start
-```
-
-The production UI assets are written to `ui/dist`.
+The production UI assets are written to `ui/dist` and can be previewed with `npm run preview:ui`.

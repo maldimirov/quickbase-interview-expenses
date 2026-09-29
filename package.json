@@ -1,0 +1,17 @@
+{
+  "name": "expense-requests",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "setup": "npm --prefix api ci && npm --prefix ui ci",
+    "dev:api": "npm --prefix api run dev",
+    "dev:ui": "npm --prefix ui run dev",
+    "start:api": "npm --prefix api start",
+    "preview:ui": "npm --prefix ui run preview",
+    "typecheck": "npm --prefix api run typecheck && npm --prefix ui run typecheck",
+    "build": "npm --prefix api run build && npm --prefix ui run build"
+  }
+}

@@ -3,11 +3,20 @@ import { toUser } from "./convert.js";
 import type { User } from "./models.js";
 
 export function listUsers(): User[] {
-  return db.listUsers().map(toUser);
+  const userRecords = db.listUsers();
+  const users = userRecords.map(toUser);
+
+  return users;
 }
 
 export function readUser(userId: string): User | undefined {
   const userRecord = db.readUser(userId);
 
-  return userRecord === undefined ? undefined : toUser(userRecord);
+  if (userRecord === undefined) {
+    return undefined;
+  }
+
+  const user = toUser(userRecord);
+
+  return user;
 }

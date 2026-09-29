@@ -1,8 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 
 import {
-  AuthenticationErrorCode,
-  type AuthenticationErrorResponse,
+  ApiErrorCode,
+  type ApiErrorResponse,
 } from "./errors.js";
 import {
   USER_ID_HEADER,
@@ -32,17 +32,17 @@ export function requestLogger(
 
 export function requireUserId(
   request: Request,
-  response: Response<AuthenticationErrorResponse, UserIdLocals>,
+  response: Response<ApiErrorResponse, UserIdLocals>,
   next: NextFunction,
 ): void {
   const parsedUserId = userIdHeaderSchema.safeParse(
     request.header(USER_ID_HEADER),
   );
 
-  if (!parsedUserId.success) {
+  if (!parsedUserId.success || parsedUserId.data.length==0) {
     response.status(401).json({
-      code: AuthenticationErrorCode.MissingUserId,
-      message: `${USER_ID_HEADER} header is required`,
+      code: ApiErrorCode.MissingUserId,
+      message: `A non-empty ${USER_ID_HEADER} header is required`,
     });
     return;
   }

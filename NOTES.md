@@ -8,6 +8,7 @@ This document records the important implementation choices, their tradeoffs, and
 
 - Use TypeScript for both the React frontend and the Node.js backend.
 - Keep `api` and `ui` as independent npm projects. Each project owns its package manifest, lockfile, dependencies, TypeScript configuration, scripts, and build output.
+- Use a dependency-free root package as a command dispatcher. Its scripts delegate with `npm --prefix`, so common setup, development, verification, and build commands can run from the repository root without npm workspaces or dependency hoisting.
 - Use Vite for the frontend development server and production build. Vite is an established React build tool, is included in React's official build-from-scratch guidance, and keeps the client setup small.
 - Use Zod only in the API layer to validate untrusted JSON at runtime and infer the corresponding API-layer TypeScript types. Business validation remains explicit business-layer code.
 - Do not add an automated test suite initially. Record the manual verification that is actually performed before submission.
@@ -34,6 +35,8 @@ DB records use persistence primitives such as `string` rather than repeating bus
 
 Business modules use namespace-qualified DB calls such as `db.listUsers()` so persistence operations remain explicit at each call site. API handlers use direct named business imports because their external operation calls are already unambiguously business-layer calls.
 
+Prefer named intermediate values over nested calls or dense operation chains when several steps are involved. The additional lines make data access, conversion, and return values easier to follow and debug.
+
 - The API layer owns HTTP handling, `X-User-Id` resolution, Zod request schemas, and HTTP response mapping.
 - The business layer owns authorization, submission validation, state transitions, approval routing, and response composition.
 - The DB layer owns the in-memory records, ID allocation, and atomic status-history insertion.
@@ -56,7 +59,11 @@ Draft fields that have no value are represented explicitly as `null`. A draft `v
 
 Request data and status history are separate data structures. API detail and list responses are read models assembled by the business layer and include the latest status information without embedding the complete history.
 
+Any known user may read the request list, details, and history. This keeps the internal approval queue visible to requesters and approvers, while create and update operations enforce actor-specific rules. Only the requester can replace a Draft's values.
+
 Treat the supplied seed files as source material rather than a runtime data contract. Copy the sample records into project-owned seed files that already match the in-memory DB models. Users, expense requests, and status-history entries are therefore loaded directly from separate record lists. Startup does not parse nested request events or convert the interview fixture format, because that conversion would add code without exercising the workflow business rules.
+
+The in-memory request ID counter starts from the number of seeded requests. This deliberately assumes the project-owned seed IDs are contiguous, avoiding production-grade ID allocation logic in a DB substitute. A real database would own ID generation.
 
 The request detail response includes at least:
 
@@ -67,9 +74,27 @@ The request detail response includes at least:
 
 The full status history is retrieved from a separate endpoint. No endpoint requires pagination for this assignment.
 
+The Draft API surface is:
+
+```text
+GET  /api/requests
+POST /api/requests
+GET  /api/requests/:id
+PUT  /api/requests/:id
+GET  /api/requests/:id/history
+```
+
+All five endpoints require `X-User-Id`. Zod schemas are strict, so attempts to include protected root fields such as requester or status are rejected rather than silently stripped.
+
 ### Status history and concurrency
 
 Status history is append-only. Each record contains the request ID, sequence, action, new status, actor, and timestamp. A submit or resubmit record also contains the server-selected approver so the assignment remains part of the workflow history.
+
+The in-memory history array is maintained in sequence order, so the last matching entry is the current status. A SQL implementation would make the ordering explicit with `ORDER BY sequence DESC LIMIT 1`.
+
+Creating a request and appending its initial `CREATE` status are separate DB operations called by one business operation. This keeps request persistence separate from the reusable, sequence-checked history append. A real database implementation should execute both calls within one transaction so a failed initial history insert cannot leave an orphan request.
+
+A business `StatusHistoryEntry` contains the complete candidate history entry, including the request ID and next sequence. The business conversion layer maps it to one primitive DB `StatusHistoryRecord`. The DB append operation verifies that the request exists and that the supplied sequence immediately follows the stored sequence before inserting it.
 
 The sequence is unique and monotonically increasing within a request. A status command contains the sequence observed by the client. The business operation performs an early optimistic check for a useful error, while the DB layer performs the decisive compare-and-insert when appending the new status.
 
@@ -84,6 +109,8 @@ Use `PUT /api/requests/:id` to replace the complete `values` object. All editabl
 API shape validation always applies. Submission business rules apply only when the user attempts to submit. An incomplete or business-invalid Draft can therefore be saved. The UI shows its submission problems as warnings, while a failed submit shows field errors.
 
 Only Draft requests can be edited. Editing request data and changing status are separate operations.
+
+The first Draft UI slice exposes the base expense type, amount, description, and billable fields. It shows missing or negative submission values as warnings rather than save errors. A Draft always uses the form view, but its native form controls are disabled when the selected user is not the requester. Conditional inputs and their complete warning set are added with submission validation in the next iteration. Seeded conditional values remain visible in read-only details and are cleared when their controlling condition no longer applies.
 
 ### Workflow endpoint and transitions
 
@@ -116,6 +143,7 @@ Keep approval selection in one business-layer function. It receives the requeste
 
 - The initial root-level npm project was split into independent `api` and `ui` projects so their dependencies, commands, and build artifacts have explicit ownership.
 - Zod was initially questioned as unnecessary for the business-rule complexity. It was retained after clarifying that its purpose is runtime API-boundary validation, which TypeScript types alone cannot provide.
+- Zod response schemas were removed after noting that outgoing objects are constructed by typed server code and were never parsed at runtime. Ordinary API response interfaces provide the compile-time checks, while the browser still validates the JSON it receives.
 - Automated tests with Vitest and Supertest were removed from the initial scope. Manual verification will be documented instead.
 - Status history was separated from expense request records and from the expense request history endpoint.
 - The supplied seed records are normalized once into project-owned DB-shaped seed files instead of adding runtime conversion logic for the interview fixture format.
@@ -128,16 +156,17 @@ Keep approval selection in one business-layer function. It receives the requeste
 - The initial proposal made Submitted requests unable to return to Draft. This was revised to allow an explicit owner-only `WITHDRAW` transition, keeping edits restricted to Draft while making withdrawal visible to the approver and in history.
 - Status sequence concurrency protects transitions and edit-versus-transition races. Concurrent Draft edits intentionally remain last-write-wins rather than adding a separate request revision.
 - The rejected-request flow remains in scope but is deliberately implemented as the final separate iteration.
+- The separate business `ExpenseRequestDetails` model was removed because every current request operation returns the latest status fields. One complete business `ExpenseRequest` is used until endpoints require genuinely different shapes.
 - Time estimates and timebox-driven cuts are not used to guide implementation scope.
 
 ## Implementation order
 
 1. Establish the TypeScript, Node.js, React, Vite, and Zod project foundation.
 2. Build the three backend layers, seed data, and `X-User-Id` handling.
-3. Wire a required-fields Draft slice through create, list, detail, full update, and separate history retrieval.
+3. Wire a required-fields Draft slice through create, list, detail, full update, separate history retrieval, and the history UI.
 4. Add the core status workflow, optimistic sequence checks, authorization, and approval routing.
 5. Add conditional fields, submission validation, Draft warnings, and server field errors.
-6. Add the history UI and complete the documented manual verification.
+6. Complete the documented manual verification.
 7. Add the rejected-request reopen, edit, and resubmit flow.
 8. Complete run instructions, tradeoffs, verification results, and AI-use documentation.
 
@@ -151,6 +180,13 @@ The independent API and UI projects were manually verified on 2026-09-28:
 - `npm run dev` started each development server from its own project directory.
 - `GET /api/users` returned the project-owned seed users directly from the API and through Vite's `/api` development proxy.
 - `npm start` ran the compiled API from `api`.
+- Protected request endpoints returned `401` for missing and unknown user IDs.
+- Request history returned the separate ordered status records.
+- Creating a Draft with missing and negative submission values returned `201` and preserved those values.
+- Replacing the complete values of an owner-controlled Draft returned `200`.
+- Updating another user's Draft returned `403`.
+- Updating a Submitted request or using a stale status sequence returned `409`.
+- Supplying a protected `requesterId` in a create body returned `400` because the Zod schema is strict.
 - npm reported no known vulnerabilities in either project after installation.
 
 No automated tests have been added or run.

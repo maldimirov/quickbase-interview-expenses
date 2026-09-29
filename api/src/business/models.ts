@@ -33,6 +33,9 @@ export interface ExpenseRequest {
   id: string;
   requesterId: string;
   values: ExpenseValues;
+  status: RequestStatus;
+  statusSequence: number;
+  assignedApproverId: string | null;
 }
 
 export enum RequestStatus {
@@ -50,7 +53,7 @@ export enum RequestAction {
   Reject = "REJECT",
 }
 
-export interface StatusHistory {
+export interface StatusHistoryEntry {
   requestId: string;
   sequence: number;
   action: RequestAction;
