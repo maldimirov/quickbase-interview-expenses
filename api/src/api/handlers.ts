@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 
 import {
+  changeExpenseRequestStatus,
   createExpenseRequest,
   getExpenseRequest,
   getStatusHistory,
@@ -15,6 +16,7 @@ import {
 } from "./convert.js";
 import { parseRequestInput } from "./errors.js";
 import {
+  changeExpenseRequestStatusBodySchema,
   createExpenseRequestBodySchema,
   type ExpenseRequestResponse,
   requestParamsSchema,
@@ -93,6 +95,26 @@ export function updateExpenseRequestHandler(
     requestId,
     body.expectedStatusSequence,
     body.values,
+  );
+  const expenseRequestResponse = toExpenseRequestResponse(expenseRequest);
+
+  response.status(200).json(expenseRequestResponse);
+}
+
+export function changeExpenseRequestStatusHandler(
+  request: Request,
+  response: Response<ExpenseRequestResponse, UserIdLocals>,
+): void {
+  const { requestId } = parseRequestInput(requestParamsSchema, request.params);
+  const body = parseRequestInput(
+    changeExpenseRequestStatusBodySchema,
+    request.body,
+  );
+  const expenseRequest = changeExpenseRequestStatus(
+    response.locals.userId,
+    requestId,
+    body.expectedStatusSequence,
+    body.action,
   );
   const expenseRequestResponse = toExpenseRequestResponse(expenseRequest);
 

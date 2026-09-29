@@ -10,7 +10,10 @@ export enum ApiErrorCode {
   ExpenseRequestNotFound = "EXPENSE_REQUEST_NOT_FOUND",
   ExpenseRequestForbidden = "EXPENSE_REQUEST_FORBIDDEN",
   ExpenseRequestNotEditable = "EXPENSE_REQUEST_NOT_EDITABLE",
+  ExpenseRequestInvalid = "EXPENSE_REQUEST_INVALID",
+  StatusTransitionInvalid = "STATUS_TRANSITION_INVALID",
   StatusSequenceConflict = "STATUS_SEQUENCE_CONFLICT",
+  ApproverUnavailable = "APPROVER_UNAVAILABLE",
 }
 
 export interface ApiErrorResponse {
@@ -109,11 +112,31 @@ function sendBusinessError(
         message: error.message,
       });
       return;
+    case BusinessErrorCode.ExpenseRequestInvalid:
+      response.status(422).json({
+        code: ApiErrorCode.ExpenseRequestInvalid,
+        message: error.message,
+        fieldErrors: error.fieldErrors,
+      });
+      return;
+    case BusinessErrorCode.StatusTransitionInvalid:
+      response.status(409).json({
+        code: ApiErrorCode.StatusTransitionInvalid,
+        message: error.message,
+      });
+      return;
     case BusinessErrorCode.StatusSequenceConflict:
       response.status(409).json({
         code: ApiErrorCode.StatusSequenceConflict,
         message: error.message,
       });
+      return;
+    case BusinessErrorCode.ApproverUnavailable:
+      response.status(422).json({
+        code: ApiErrorCode.ApproverUnavailable,
+        message: error.message,
+      });
+      return;
   }
 }
 

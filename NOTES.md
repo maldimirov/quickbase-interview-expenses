@@ -74,17 +74,18 @@ The request detail response includes at least:
 
 The full status history is retrieved from a separate endpoint. No endpoint requires pagination for this assignment.
 
-The Draft API surface is:
+The request API surface is:
 
 ```text
 GET  /api/requests
 POST /api/requests
 GET  /api/requests/:id
 PUT  /api/requests/:id
+POST /api/requests/:id/status
 GET  /api/requests/:id/history
 ```
 
-All five endpoints require `X-User-Id`. Zod schemas are strict, so attempts to include protected root fields such as requester or status are rejected rather than silently stripped.
+All request endpoints require `X-User-Id`. Zod schemas are strict, so attempts to include protected root fields such as requester or status are rejected rather than silently stripped.
 
 ### Status history and concurrency
 
@@ -106,7 +107,9 @@ Draft updates also provide the expected status sequence. This prevents an update
 
 Use `PUT /api/requests/:id` to replace the complete `values` object. All editable fields are resubmitted, shape-validated, and stored together. Omitted fields are not retained accidentally; nullable fields explicitly use `null` when absent.
 
-API shape validation always applies. Submission business rules apply only when the user attempts to submit. An incomplete or business-invalid Draft can therefore be saved. The UI shows its submission problems as warnings, while a failed submit shows field errors.
+API shape validation always applies. Submission business rules apply only when the user attempts to submit. An incomplete or business-invalid Draft can therefore be saved. The UI shows known submission problems as warnings, while a failed submit response returns field-specific errors.
+
+The status workflow includes server-side submission validation because a `SUBMIT` operation cannot safely precede those rules. Missing base fields, negative amounts, and missing conditional values produce `422 Unprocessable Entity` with field-specific errors. The conditional inputs and inline presentation of those server errors remain the next UI iteration.
 
 Only Draft requests can be edited. Editing request data and changing status are separate operations.
 
@@ -139,6 +142,8 @@ The rejected-request extension is implemented last. It adds an owner-only `REOPE
 
 Keep approval selection in one business-layer function. It receives the requester, amount, and users, and returns the selected approver or a clear routing error. Submit and later resubmit use the same function. Neither the API handler nor the client selects the authoritative approver.
 
+Expenses below $1,000 route to the requester's manager. Missing and self-referencing managers fall back to finance. Expenses of $1,000 or more route directly to finance. Submission fails clearly when the selected finance approver would be the requester or no finance approver exists.
+
 ## Changes from the initial proposal
 
 - The initial root-level npm project was split into independent `api` and `ui` projects so their dependencies, commands, and build artifacts have explicit ownership.
@@ -157,6 +162,7 @@ Keep approval selection in one business-layer function. It receives the requeste
 - Status sequence concurrency protects transitions and edit-versus-transition races. Concurrent Draft edits intentionally remain last-write-wins rather than adding a separate request revision.
 - The rejected-request flow remains in scope but is deliberately implemented as the final separate iteration.
 - The separate business `ExpenseRequestDetails` model was removed because every current request operation returns the latest status fields. One complete business `ExpenseRequest` is used until endpoints require genuinely different shapes.
+- Server submission validation was pulled into the workflow iteration because accepting `SUBMIT` before enforcing the assignment rules would expose an invalid API state. Conditional form inputs and inline field-error presentation remain the following UI iteration.
 - Time estimates and timebox-driven cuts are not used to guide implementation scope.
 
 ## Implementation order
@@ -165,7 +171,7 @@ Keep approval selection in one business-layer function. It receives the requeste
 2. Build the three backend layers, seed data, and `X-User-Id` handling.
 3. Wire a required-fields Draft slice through create, list, detail, full update, separate history retrieval, and the history UI.
 4. Add the core status workflow, optimistic sequence checks, authorization, and approval routing.
-5. Add conditional fields, submission validation, Draft warnings, and server field errors.
+5. Add conditional fields, complete the Draft warnings, and present server field errors inline.
 6. Complete the documented manual verification.
 7. Add the rejected-request reopen, edit, and resubmit flow.
 8. Complete run instructions, tradeoffs, verification results, and AI-use documentation.
@@ -188,5 +194,15 @@ The independent API and UI projects were manually verified on 2026-09-28:
 - Updating a Submitted request or using a stale status sequence returned `409`.
 - Supplying a protected `requesterId` in a create body returned `400` because the Zod schema is strict.
 - npm reported no known vulnerabilities in either project after installation.
+
+The status workflow was manually verified on 2026-09-29:
+
+- Strict API validation rejected `CREATE` as a public status command with `400`.
+- An incomplete billable Draft failed submission with `422` and errors for every invalid field.
+- A valid low-value request routed to the requester's manager and submitted with sequence 2.
+- A non-assigned user could not approve the submitted request and received `403`.
+- A stale expected status sequence produced `409`.
+- The assigned manager approved the request, producing sequence 3 and clearing the assignment.
+- Compiled in-process checks covered owner withdrawal, assigned-approver rejection, high-value finance routing, finance self-approval refusal, and the same authorization and concurrency guards.
 
 No automated tests have been added or run.

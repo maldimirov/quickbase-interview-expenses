@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import {
   ExpenseType,
-  type RequestAction,
+  RequestAction,
   type RequestStatus,
   type UserRole,
 } from "../business/models.js";
@@ -51,6 +51,18 @@ export const createExpenseRequestBodySchema = z
 export const updateExpenseRequestBodySchema = z
   .object({
     values: expenseValuesSchema,
+    expectedStatusSequence: z.number().int().positive(),
+  })
+  .strict();
+
+export const changeExpenseRequestStatusBodySchema = z
+  .object({
+    action: z.enum([
+      RequestAction.Submit,
+      RequestAction.Withdraw,
+      RequestAction.Approve,
+      RequestAction.Reject,
+    ]),
     expectedStatusSequence: z.number().int().positive(),
   })
   .strict();

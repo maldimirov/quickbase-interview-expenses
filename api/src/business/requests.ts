@@ -1,4 +1,5 @@
 import * as db from "../db/requests.js";
+import { selectApprover } from "./approval.js";
 import {
   toExpenseRequest,
   toExpenseValuesRecord,
@@ -12,13 +13,17 @@ import {
   type ExpenseRequest,
   type ExpenseValues,
   type StatusHistoryEntry,
+  type User,
 } from "./models.js";
-import { readUser } from "./users.js";
+import { listUsers, readUser } from "./users.js";
+import { validateExpenseForSubmission } from "./validation.js";
+import { getNewStatusForAction } from "./workflow.js";
 
 const FIRST_STATUS_SEQUENCE = 1;
+const STATUS_SEQUENCE_INCREMENT = 1;
 
 export function listExpenseRequests(userId: string): ExpenseRequest[] {
-  ensureKnownUser(userId);
+  readKnownUser(userId);
 
   const expenseRequestRecords = db.listExpenseRequests();
 
@@ -37,7 +42,7 @@ export function getExpenseRequest(
   userId: string,
   requestId: string,
 ): ExpenseRequest {
-  ensureKnownUser(userId);
+  readKnownUser(userId);
 
   const expenseRequest = readExpenseRequest(requestId);
 
@@ -48,7 +53,7 @@ export function getStatusHistory(
   userId: string,
   requestId: string,
 ): StatusHistoryEntry[] {
-  ensureKnownUser(userId);
+  readKnownUser(userId);
   readExpenseRequestRecord(requestId);
 
   const statusHistoryRecords = db.listStatusHistory(requestId);
@@ -61,7 +66,7 @@ export function createExpenseRequest(
   userId: string,
   values: ExpenseValues,
 ): ExpenseRequest {
-  ensureKnownUser(userId);
+  readKnownUser(userId);
 
   const expenseValuesRecord = toExpenseValuesRecord(values);
   const expenseRequestRecord = db.createExpenseRequest({
@@ -100,7 +105,7 @@ export function updateExpenseRequest(
   expectedStatusSequence: number,
   values: ExpenseValues,
 ): ExpenseRequest {
-  ensureKnownUser(userId);
+  readKnownUser(userId);
 
   const expenseRequestRecord = readExpenseRequestRecord(requestId);
   const latestStatus = readLatestStatus(requestId);
@@ -142,13 +147,81 @@ export function updateExpenseRequest(
   return expenseRequest;
 }
 
-function ensureKnownUser(userId: string): void {
-  if (readUser(userId) === undefined) {
+export function changeExpenseRequestStatus(
+  userId: string,
+  requestId: string,
+  expectedStatusSequence: number,
+  action: RequestAction,
+): ExpenseRequest {
+  const actor = readKnownUser(userId);
+  const expenseRequestRecord = readExpenseRequestRecord(requestId);
+  const latestStatus = readLatestStatus(requestId);
+  const expenseRequest = toExpenseRequest(
+    expenseRequestRecord,
+    latestStatus,
+  );
+
+  if (latestStatus.sequence !== expectedStatusSequence) {
+    throwStatusSequenceConflict();
+  }
+
+  const newStatus = getNewStatusForAction(action, actor.id, expenseRequest);
+  let assignedApproverId: string | null = null;
+
+  if (action === RequestAction.Submit) {
+    const amountCents = validateExpenseForSubmission(expenseRequest.values);
+    const requester = readRequester(expenseRequest.requesterId);
+    const users = listUsers();
+    const approver = selectApprover(requester, amountCents, users);
+
+    assignedApproverId = approver.id;
+  }
+
+  const statusHistoryEntry: StatusHistoryEntry = {
+    requestId,
+    sequence: latestStatus.sequence + STATUS_SEQUENCE_INCREMENT,
+    action,
+    newStatus,
+    actorId: actor.id,
+    occurredAt: new Date().toISOString(),
+    assignedApproverId,
+  };
+  const statusHistoryRecord = toStatusHistoryRecord(statusHistoryEntry);
+  const appendedStatusRecord = db.appendStatusHistory(statusHistoryRecord);
+
+  if (appendedStatusRecord === undefined) {
+    throwStatusSequenceConflict();
+  }
+
+  const updatedExpenseRequest = toExpenseRequest(
+    expenseRequestRecord,
+    appendedStatusRecord,
+  );
+
+  return updatedExpenseRequest;
+}
+
+function readKnownUser(userId: string): User {
+  const user = readUser(userId);
+
+  if (user === undefined) {
     throw new BusinessError(
       BusinessErrorCode.UnknownUser,
       "The current user does not exist",
     );
   }
+
+  return user;
+}
+
+function readRequester(requesterId: string): User {
+  const requester = readUser(requesterId);
+
+  if (requester === undefined) {
+    throw new Error(`Expense requester ${requesterId} does not exist`);
+  }
+
+  return requester;
 }
 
 function readExpenseRequest(requestId: string): ExpenseRequest {

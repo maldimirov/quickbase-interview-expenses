@@ -19,6 +19,8 @@ export enum ExpenseType {
   Other = "Other",
 }
 
+export const HIGH_VALUE_EXPENSE_CENTS = 100_000;
+
 export interface ExpenseValues {
   expenseType: ExpenseType | null;
   amountCents: number | null;

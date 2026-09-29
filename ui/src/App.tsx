@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  changeExpenseRequestStatus,
   createExpenseRequest,
   ExpenseType,
   getExpenseRequest,
   listExpenseRequests,
   listStatusHistory,
   listUsers,
+  RequestAction,
   RequestStatus,
   updateExpenseRequest,
   type ExpenseRequest,
   type ExpenseValues,
   type StatusHistoryEntry,
+  type StatusCommandAction,
   type User,
 } from "./api";
 import { ExpenseForm } from "./ExpenseForm";
@@ -26,6 +29,20 @@ const EMPTY_EXPENSE_VALUES: ExpenseValues = {
   otherReason: null,
 };
 
+const STATUS_ACTION_LABELS: Record<StatusCommandAction, string> = {
+  [RequestAction.Submit]: "Submit",
+  [RequestAction.Withdraw]: "Withdraw",
+  [RequestAction.Approve]: "Approve",
+  [RequestAction.Reject]: "Reject",
+};
+
+const STATUS_ACTION_BUTTON_CLASSES: Record<StatusCommandAction, string> = {
+  [RequestAction.Submit]: "primary-button",
+  [RequestAction.Withdraw]: "secondary-button",
+  [RequestAction.Approve]: "primary-button",
+  [RequestAction.Reject]: "danger-button",
+};
+
 export function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -37,6 +54,8 @@ export function App() {
   const [history, setHistory] = useState<StatusHistoryEntry[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
+  const [pendingStatusAction, setPendingStatusAction] =
+    useState<StatusCommandAction | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
 
   const usersById = useMemo(
@@ -212,12 +231,58 @@ export function App() {
     );
   }
 
+  async function handleStatusAction(action: StatusCommandAction) {
+    if (currentUserId === null || selectedRequest === null) {
+      return;
+    }
+
+    setPendingStatusAction(action);
+    setPageError(null);
+
+    try {
+      const updatedRequest = await changeExpenseRequestStatus(
+        currentUserId,
+        selectedRequest.id,
+        selectedRequest.statusSequence,
+        action,
+      );
+
+      setSelectedRequest(updatedRequest);
+      setRequests((currentRequests) =>
+        currentRequests.map((expenseRequest) => {
+          if (expenseRequest.id === updatedRequest.id) {
+            return updatedRequest;
+          }
+
+          return expenseRequest;
+        }),
+      );
+
+      const updatedHistory = await listStatusHistory(
+        currentUserId,
+        updatedRequest.id,
+      );
+
+      setHistory(updatedHistory);
+    } catch (error) {
+      setPageError(
+        getErrorMessage(error, "Request status could not be updated"),
+      );
+    } finally {
+      setPendingStatusAction(null);
+    }
+  }
+
   const currentUserIsRequester =
     selectedRequest !== null &&
     selectedRequest.requesterId === currentUserId;
   const selectedRequestIsDraft =
     selectedRequest !== null &&
     selectedRequest.status === RequestStatus.Draft;
+  const availableStatusActions = getAvailableStatusActions(
+    selectedRequest,
+    currentUserId,
+  );
 
   return (
     <main className="app-shell">
@@ -335,6 +400,14 @@ export function App() {
                   <p className="muted">
                     Requested by {getUserName(usersById, selectedRequest.requesterId)}
                   </p>
+                  {selectedRequest.assignedApproverId !== null && (
+                    <p className="muted">
+                      Assigned to {getUserName(
+                        usersById,
+                        selectedRequest.assignedApproverId,
+                      )}
+                    </p>
+                  )}
                 </div>
                 <span className="sequence">
                   Status version {selectedRequest.statusSequence}
@@ -360,6 +433,24 @@ export function App() {
                 <ExpenseValuesView values={selectedRequest.values} />
               )}
 
+              {availableStatusActions.length > 0 && (
+                <div className="status-actions">
+                  {availableStatusActions.map((action) => (
+                    <button
+                      className={STATUS_ACTION_BUTTON_CLASSES[action]}
+                      key={action}
+                      type="button"
+                      disabled={pendingStatusAction !== null}
+                      onClick={() => void handleStatusAction(action)}
+                    >
+                      {pendingStatusAction === action
+                        ? `${STATUS_ACTION_LABELS[action]}…`
+                        : STATUS_ACTION_LABELS[action]}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <section className="history">
                 <h3>History</h3>
                 {history.map((event) => (
@@ -371,7 +462,17 @@ export function App() {
                         {getUserName(usersById, event.actorId)} ·{" "}
                         {new Date(event.occurredAt).toLocaleString()}
                       </p>
-                      <small>New status: {event.newStatus}</small>
+                      <small>
+                        New status: {event.newStatus}
+                        {event.assignedApproverId !== null && (
+                          <>
+                            {" "}· Assigned to {getUserName(
+                              usersById,
+                              event.assignedApproverId,
+                            )}
+                          </>
+                        )}
+                      </small>
                     </div>
                   </article>
                 ))}
@@ -440,6 +541,36 @@ function formatMoney(amountCents: number | null): string {
 
 function getUserName(usersById: Map<string, User>, userId: string): string {
   return usersById.get(userId)?.name ?? userId;
+}
+
+function getAvailableStatusActions(
+  expenseRequest: ExpenseRequest | null,
+  currentUserId: string | null,
+): StatusCommandAction[] {
+  if (expenseRequest === null || currentUserId === null) {
+    return [];
+  }
+
+  if (
+    expenseRequest.status === RequestStatus.Draft &&
+    expenseRequest.requesterId === currentUserId
+  ) {
+    return [RequestAction.Submit];
+  }
+
+  if (expenseRequest.status !== RequestStatus.Submitted) {
+    return [];
+  }
+
+  if (expenseRequest.requesterId === currentUserId) {
+    return [RequestAction.Withdraw];
+  }
+
+  if (expenseRequest.assignedApproverId === currentUserId) {
+    return [RequestAction.Approve, RequestAction.Reject];
+  }
+
+  return [];
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {

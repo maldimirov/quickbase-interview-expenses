@@ -31,6 +31,12 @@ export enum RequestAction {
   Reject = "REJECT",
 }
 
+export type StatusCommandAction =
+  | RequestAction.Submit
+  | RequestAction.Withdraw
+  | RequestAction.Approve
+  | RequestAction.Reject;
+
 export interface User {
   id: string;
   name: string;
@@ -177,6 +183,28 @@ export async function updateExpenseRequest(
 
   if (!isExpenseRequest(body)) {
     throw new Error("API returned an invalid updated expense request");
+  }
+
+  return body;
+}
+
+export async function changeExpenseRequestStatus(
+  currentUserId: string,
+  requestId: string,
+  expectedStatusSequence: number,
+  action: StatusCommandAction,
+): Promise<ExpenseRequest> {
+  const body = await requestJson(
+    `/requests/${encodeURIComponent(requestId)}/status`,
+    {
+      method: "POST",
+      currentUserId,
+      body: JSON.stringify({ action, expectedStatusSequence }),
+    },
+  );
+
+  if (!isExpenseRequest(body)) {
+    throw new Error("API returned an invalid status update response");
   }
 
   return body;

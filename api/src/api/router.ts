@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import {
+  changeExpenseRequestStatusHandler,
   createExpenseRequestHandler,
   getExpenseRequestHandler,
   getStatusHistoryHandler,
@@ -19,6 +20,10 @@ export function createApiRouter() {
   router.post("/requests", createExpenseRequestHandler);
   router.get("/requests/:requestId", getExpenseRequestHandler);
   router.put("/requests/:requestId", updateExpenseRequestHandler);
+  router.post(
+    "/requests/:requestId/status",
+    changeExpenseRequestStatusHandler,
+  );
   router.get("/requests/:requestId/history", getStatusHistoryHandler);
 
   return router;

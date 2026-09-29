@@ -135,21 +135,29 @@ h2 {
 }
 
 .secondary-button,
-.primary-button {
+.primary-button,
+.danger-button {
   padding: 0.65rem 0.9rem;
-  border: 1px solid #315f9b;
   border-radius: 0.4rem;
   font-weight: 700;
 }
 
 .secondary-button {
+  border: 1px solid #315f9b;
   color: #315f9b;
   background: #ffffff;
 }
 
 .primary-button {
+  border: 1px solid #315f9b;
   color: #ffffff;
   background: #315f9b;
+}
+
+.danger-button {
+  border: 1px solid #a83842;
+  color: #ffffff;
+  background: #a83842;
 }
 
 .text-button {
@@ -325,6 +333,13 @@ h2 {
   color: #5f6e82;
   font-size: 0.82rem;
   white-space: nowrap;
+}
+
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 1.25rem;
 }
 
 .values-grid {
