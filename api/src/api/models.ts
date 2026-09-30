@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  Client,
   ExpenseType,
   RequestAction,
   type RequestStatus,
@@ -23,25 +24,30 @@ export interface ExpenseValues {
   amountCents: number | null;
   description: string | null;
   billable: boolean;
-  client: string | null;
+  client: Client | null;
   additionalJustification: string | null;
   otherReason: string | null;
 }
 
 export const expenseTypeSchema = z.enum(ExpenseType);
+export const clientSchema = z.enum(Client);
 
+// Treat editable values as an explicit allow-list so unexpected form data
+// cannot cross the HTTP boundary unnoticed.
 export const expenseValuesSchema: z.ZodType<ExpenseValues> = z
   .object({
     expenseType: expenseTypeSchema.nullable(),
     amountCents: z.number().int().nullable(),
     description: z.string().nullable(),
     billable: z.boolean(),
-    client: z.string().nullable(),
+    client: clientSchema.nullable(),
     additionalJustification: z.string().nullable(),
     otherReason: z.string().nullable(),
   })
   .strict();
 
+// Keep request body schemas strict so server-owned root fields such as requester,
+// status, and approver are rejected instead of silently discarded.
 export const createExpenseRequestBodySchema = z
   .object({
     values: expenseValuesSchema,
@@ -57,6 +63,8 @@ export const updateExpenseRequestBodySchema = z
 
 export const changeExpenseRequestStatusBodySchema = z
   .object({
+    // CREATE is produced internally when the request record is created. Clients
+    // can request only user-driven workflow operations.
     action: z.enum([
       RequestAction.Submit,
       RequestAction.Withdraw,

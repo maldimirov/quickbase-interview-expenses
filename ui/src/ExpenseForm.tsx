@@ -1,11 +1,28 @@
 import { useState, type FormEvent } from "react";
 
-import { ExpenseType, type ExpenseValues } from "./api";
+import {
+  Client,
+  ExpenseType,
+  HIGH_VALUE_EXPENSE_CENTS,
+  type ExpenseValues,
+  type FieldErrors,
+} from "./api";
+
+const FIELD_PATHS = {
+  expenseType: "values.expenseType",
+  amountCents: "values.amountCents",
+  description: "values.description",
+  client: "values.client",
+  additionalJustification: "values.additionalJustification",
+  otherReason: "values.otherReason",
+} as const;
 
 interface ExpenseFormProps {
   initialValues: ExpenseValues;
   submitLabel: string;
   disabled?: boolean;
+  fieldErrors?: FieldErrors;
+  onValuesChange?: () => void;
   onSubmit: (values: ExpenseValues) => Promise<void>;
 }
 
@@ -13,6 +30,8 @@ export function ExpenseForm({
   initialValues,
   submitLabel,
   disabled = false,
+  fieldErrors = {},
+  onValuesChange,
   onSubmit,
 }: ExpenseFormProps) {
   const [expenseType, setExpenseType] = useState<ExpenseType | "">(
@@ -25,14 +44,41 @@ export function ExpenseForm({
     initialValues.description ?? "",
   );
   const [billable, setBillable] = useState(initialValues.billable);
+  const [client, setClient] = useState<Client | "">(
+    initialValues.client ?? "",
+  );
+  const [additionalJustification, setAdditionalJustification] = useState(
+    initialValues.additionalJustification ?? "",
+  );
+  const [otherReason, setOtherReason] = useState(
+    initialValues.otherReason ?? "",
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const parsedAmount = parseAmountInput(amount);
-  const draftWarnings = getDraftWarnings(
-    expenseType === "" ? null : expenseType,
-    parsedAmount.valid ? parsedAmount.amountCents : null,
-    description,
+  const normalizedExpenseType = expenseType === "" ? null : expenseType;
+  const amountCents = parsedAmount.valid ? parsedAmount.amountCents : null;
+  const showAdditionalJustification =
+    amountCents !== null && amountCents >= HIGH_VALUE_EXPENSE_CENTS;
+  const showOtherReason = expenseType === ExpenseType.Other;
+
+  // Build the complete replacement payload from visible controls. Hidden
+  // conditional fields become null so stale values are not retained by PUT.
+  const draftValues: ExpenseValues = {
+    expenseType: normalizedExpenseType,
+    amountCents,
+    description: normalizeOptionalText(description),
+    billable,
+    client: billable && client !== "" ? client : null,
+    additionalJustification: showAdditionalJustification
+      ? normalizeOptionalText(additionalJustification)
+      : null,
+    otherReason: showOtherReason ? normalizeOptionalText(otherReason) : null,
+  };
+  const draftWarnings = getDraftWarnings(draftValues);
+  const hasFieldErrors = Object.values(fieldErrors).some(
+    (messages) => messages.length > 0,
   );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -47,32 +93,23 @@ export function ExpenseForm({
       return;
     }
 
-    const normalizedExpenseType = expenseType === "" ? null : expenseType;
-    const normalizedDescription = normalizeOptionalText(description);
-    const client = billable ? initialValues.client : null;
-    const additionalJustification =
-      parsedAmount.amountCents !== null && parsedAmount.amountCents >= 100_000
-        ? initialValues.additionalJustification
-        : null;
-    const otherReason =
-      expenseType === ExpenseType.Other ? initialValues.otherReason : null;
-    const values: ExpenseValues = {
-      expenseType: normalizedExpenseType,
-      amountCents: parsedAmount.amountCents,
-      description: normalizedDescription,
-      billable,
-      client,
-      additionalJustification,
-      otherReason,
-    };
-
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      await onSubmit(values);
+      await onSubmit(draftValues);
+      setDescription(draftValues.description ?? "");
+      setAmount(formatAmountInput(draftValues.amountCents));
+      setClient(draftValues.client ?? "");
+      setAdditionalJustification(
+        draftValues.additionalJustification ?? "",
+      );
+      setOtherReason(draftValues.otherReason ?? "");
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Request could not be saved");
+      const errorMessage =
+        error instanceof Error ? error.message : "Request could not be saved";
+
+      setSaveError(errorMessage);
     } finally {
       setIsSaving(false);
     }
@@ -84,14 +121,22 @@ export function ExpenseForm({
         className="expense-form__fields"
         disabled={disabled || isSaving}
       >
+        {hasFieldErrors && (
+          <div className="form-error" role="alert">
+            Correct the highlighted fields before submitting.
+          </div>
+        )}
+
         <div className="field">
           <label htmlFor="expense-type">Expense type</label>
           <select
+            aria-invalid={hasErrors(fieldErrors, FIELD_PATHS.expenseType)}
             id="expense-type"
             value={expenseType}
-            onChange={(event) =>
-              setExpenseType(event.target.value as ExpenseType | "")
-            }
+            onChange={(event) => {
+              setExpenseType(event.target.value as ExpenseType | "");
+              onValuesChange?.();
+            }}
           >
             <option value="">Not selected</option>
             {Object.values(ExpenseType).map((type) => (
@@ -100,32 +145,102 @@ export function ExpenseForm({
               </option>
             ))}
           </select>
+          <FieldErrorMessages
+            messages={fieldErrors[FIELD_PATHS.expenseType]}
+          />
         </div>
+
+        {showOtherReason && (
+          <div className="field">
+            <label htmlFor="other-reason">Other reason</label>
+            <textarea
+              aria-invalid={hasErrors(fieldErrors, FIELD_PATHS.otherReason)}
+              id="other-reason"
+              rows={3}
+              value={otherReason}
+              onChange={(event) => {
+                setOtherReason(event.target.value);
+                onValuesChange?.();
+              }}
+            />
+            <FieldErrorMessages
+              messages={fieldErrors[FIELD_PATHS.otherReason]}
+            />
+          </div>
+        )}
 
         <div className="field">
           <label htmlFor="amount">Amount</label>
-          <div className="money-input">
+          <div
+            className={`money-input${
+              !parsedAmount.valid ||
+              hasErrors(fieldErrors, FIELD_PATHS.amountCents)
+                ? " money-input--invalid"
+                : ""
+            }`}
+          >
             <span aria-hidden="true">$</span>
             <input
+              aria-invalid={
+                !parsedAmount.valid ||
+                hasErrors(fieldErrors, FIELD_PATHS.amountCents)
+              }
               id="amount"
               inputMode="decimal"
               placeholder="0.00"
               value={amount}
-              onChange={(event) => setAmount(event.target.value)}
+              onChange={(event) => {
+                setAmount(event.target.value);
+                onValuesChange?.();
+              }}
             />
           </div>
           {!parsedAmount.valid && (
             <small className="error">Use a money value such as 12.50</small>
           )}
+          <FieldErrorMessages
+            messages={fieldErrors[FIELD_PATHS.amountCents]}
+          />
         </div>
+
+        {showAdditionalJustification && (
+          <div className="field">
+            <label htmlFor="additional-justification">
+              Extra justification
+            </label>
+            <textarea
+              aria-invalid={hasErrors(
+                fieldErrors,
+                FIELD_PATHS.additionalJustification,
+              )}
+              id="additional-justification"
+              rows={3}
+              value={additionalJustification}
+              onChange={(event) => {
+                setAdditionalJustification(event.target.value);
+                onValuesChange?.();
+              }}
+            />
+            <FieldErrorMessages
+              messages={fieldErrors[FIELD_PATHS.additionalJustification]}
+            />
+          </div>
+        )}
 
         <div className="field">
           <label htmlFor="description">Description</label>
           <textarea
+            aria-invalid={hasErrors(fieldErrors, FIELD_PATHS.description)}
             id="description"
             rows={4}
             value={description}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={(event) => {
+              setDescription(event.target.value);
+              onValuesChange?.();
+            }}
+          />
+          <FieldErrorMessages
+            messages={fieldErrors[FIELD_PATHS.description]}
           />
         </div>
 
@@ -133,10 +248,36 @@ export function ExpenseForm({
           <input
             type="checkbox"
             checked={billable}
-            onChange={(event) => setBillable(event.target.checked)}
+            onChange={(event) => {
+              setBillable(event.target.checked);
+              onValuesChange?.();
+            }}
           />
           Billable to a client
         </label>
+
+        {billable && (
+          <div className="field">
+            <label htmlFor="client">Client</label>
+            <select
+              aria-invalid={hasErrors(fieldErrors, FIELD_PATHS.client)}
+              id="client"
+              value={client}
+              onChange={(event) => {
+                setClient(event.target.value as Client | "");
+                onValuesChange?.();
+              }}
+            >
+              <option value="">Not selected</option>
+              {Object.values(Client).map((clientOption) => (
+                <option key={clientOption} value={clientOption}>
+                  {clientOption}
+                </option>
+              ))}
+            </select>
+            <FieldErrorMessages messages={fieldErrors[FIELD_PATHS.client]} />
+          </div>
+        )}
 
         {draftWarnings.length > 0 && (
           <div className="warning" role="status">
@@ -162,6 +303,8 @@ export function ExpenseForm({
 function parseAmountInput(
   value: string,
 ): { valid: true; amountCents: number | null } | { valid: false } {
+  // Parse decimal digits directly into cents so money does not pass through
+  // floating-point arithmetic before it reaches the API.
   const trimmedValue = value.trim();
 
   if (trimmedValue === "") {
@@ -203,26 +346,65 @@ function normalizeOptionalText(value: string): string | null {
   return normalizedValue === "" ? null : normalizedValue;
 }
 
-function getDraftWarnings(
-  expenseType: ExpenseType | null,
-  amountCents: number | null,
-  description: string,
-): string[] {
+function getDraftWarnings(values: ExpenseValues): string[] {
+  // Warnings mirror submission rules for immediate feedback, but they do not
+  // block Draft saves or replace authoritative server validation.
   const warnings: string[] = [];
 
-  if (expenseType === null) {
+  if (values.expenseType === null) {
     warnings.push("Select an expense type");
   }
 
-  if (amountCents === null) {
+  if (values.amountCents === null) {
     warnings.push("Enter an amount");
-  } else if (amountCents < 0) {
+  } else if (values.amountCents < 0) {
     warnings.push("Amount cannot be negative");
   }
 
-  if (description.trim() === "") {
+  if (values.description === null) {
     warnings.push("Enter a description");
   }
 
+  if (values.billable && values.client === null) {
+    warnings.push("Select a client");
+  }
+
+  if (
+    values.amountCents !== null &&
+    values.amountCents >= HIGH_VALUE_EXPENSE_CENTS &&
+    values.additionalJustification === null
+  ) {
+    warnings.push("Enter extra justification for expenses of $1,000 or more");
+  }
+
+  if (
+    values.expenseType === ExpenseType.Other &&
+    values.otherReason === null
+  ) {
+    warnings.push("Explain the Other expense type");
+  }
+
   return warnings;
+}
+
+function hasErrors(fieldErrors: FieldErrors, fieldPath: string): boolean {
+  return (fieldErrors[fieldPath]?.length ?? 0) > 0;
+}
+
+function FieldErrorMessages({
+  messages,
+}: {
+  messages: string[] | undefined;
+}) {
+  if (messages === undefined || messages.length === 0) {
+    return null;
+  }
+
+  return (
+    <ul className="field-errors">
+      {messages.map((message) => (
+        <li key={message}>{message}</li>
+      ))}
+    </ul>
+  );
 }

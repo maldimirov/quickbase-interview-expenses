@@ -5,6 +5,7 @@ import type {
   UserRecord,
 } from "../db/models.js";
 import {
+  Client,
   ExpenseType,
   RequestAction,
   RequestStatus,
@@ -15,6 +16,8 @@ import {
   type User,
 } from "./models.js";
 
+// DB records deliberately use storage primitives. Restore their controlled
+// string values to domain enums before business rules consume them.
 export function toUser(userRecord: UserRecord): User {
   return {
     id: userRecord.id,
@@ -36,7 +39,7 @@ export function toExpenseRequest(
       amountCents: expenseRequestRecord.values.amountCents,
       description: expenseRequestRecord.values.description,
       billable: expenseRequestRecord.values.billable,
-      client: expenseRequestRecord.values.client,
+      client: expenseRequestRecord.values.client as Client | null,
       additionalJustification:
         expenseRequestRecord.values.additionalJustification,
       otherReason: expenseRequestRecord.values.otherReason,

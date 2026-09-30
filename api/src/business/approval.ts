@@ -10,6 +10,8 @@ export function selectApprover(
   amountCents: number,
   users: User[],
 ): User {
+  // Low-value requests prefer the requester's manager. A missing or
+  // self-referencing manager deliberately falls through to finance.
   if (amountCents < HIGH_VALUE_EXPENSE_CENTS) {
     const manager = users.find(({ id }) => id === requester.managerId);
 

@@ -109,11 +109,13 @@ Use `PUT /api/requests/:id` to replace the complete `values` object. All editabl
 
 API shape validation always applies. Submission business rules apply only when the user attempts to submit. An incomplete or business-invalid Draft can therefore be saved. The UI shows known submission problems as warnings, while a failed submit response returns field-specific errors.
 
-The status workflow includes server-side submission validation because a `SUBMIT` operation cannot safely precede those rules. Missing base fields, negative amounts, and missing conditional values produce `422 Unprocessable Entity` with field-specific errors. The conditional inputs and inline presentation of those server errors remain the next UI iteration.
+The status workflow includes server-side submission validation because a `SUBMIT` operation cannot safely precede those rules. Missing base fields, negative amounts, missing required conditional values, and values supplied when their condition does not apply produce `422 Unprocessable Entity` with field-specific errors. The Draft form displays those server errors beside their fields after a failed submit.
 
 Only Draft requests can be edited. Editing request data and changing status are separate operations.
 
-The first Draft UI slice exposes the base expense type, amount, description, and billable fields. It shows missing or negative submission values as warnings rather than save errors. A Draft always uses the form view, but its native form controls are disabled when the selected user is not the requester. Conditional inputs and their complete warning set are added with submission validation in the next iteration. Seeded conditional values remain visible in read-only details and are cleared when their controlling condition no longer applies.
+The Draft form exposes the base expense type, amount, description, and billable fields. It conditionally shows a client dropdown for billable expenses, extra justification for amounts of at least $1,000, and an Other reason for the Other expense type. Its warning list covers the same submission rules without preventing an incomplete Draft from being saved. A Draft always uses the form view, but its native form controls are disabled when the selected user is not the requester. Conditional values are sent as `null` when their controlling condition no longer applies, preventing stale hidden values from being retained.
+
+Client is a small enum owned by the business layer, with `Acme`, `Globex`, and `Initech` as its current values. The API imports that enum for request validation, while the UI mirrors the public API values for its dropdown and runtime response checks.
 
 ### Workflow endpoint and transitions
 
@@ -162,7 +164,7 @@ Expenses below $1,000 route to the requester's manager. Missing and self-referen
 - Status sequence concurrency protects transitions and edit-versus-transition races. Concurrent Draft edits intentionally remain last-write-wins rather than adding a separate request revision.
 - The rejected-request flow remains in scope but is deliberately implemented as the final separate iteration.
 - The separate business `ExpenseRequestDetails` model was removed because every current request operation returns the latest status fields. One complete business `ExpenseRequest` is used until endpoints require genuinely different shapes.
-- Server submission validation was pulled into the workflow iteration because accepting `SUBMIT` before enforcing the assignment rules would expose an invalid API state. Conditional form inputs and inline field-error presentation remain the following UI iteration.
+- Server submission validation was pulled into the workflow iteration because accepting `SUBMIT` before enforcing the assignment rules would expose an invalid API state. The following UI iteration added the conditional inputs, matching Draft warnings, and inline field-error presentation.
 - Time estimates and timebox-driven cuts are not used to guide implementation scope.
 
 ## Implementation order
@@ -204,5 +206,13 @@ The status workflow was manually verified on 2026-09-29:
 - A stale expected status sequence produced `409`.
 - The assigned manager approved the request, producing sequence 3 and clearing the assignment.
 - Compiled in-process checks covered owner withdrawal, assigned-approver rejection, high-value finance routing, finance self-approval refusal, and the same authorization and concurrency guards.
+
+The conditional form and API contract were verified on 2026-09-30:
+
+- Root-level `npm run typecheck` and `npm run build` completed successfully for both projects.
+- API shape validation rejected a client outside the configured dropdown values with `400` and a field-specific error.
+- An incomplete conditional Draft retained its missing extra justification and Other reason, then submission returned both field errors with `422`.
+- A Draft containing client, extra-justification, and Other-reason values outside their applicable conditions was saved, then submission returned all three inverse field errors with `422`.
+- Replacing the Draft with complete conditional values succeeded, and submitting its high-value amount routed it to finance.
 
 No automated tests have been added or run.

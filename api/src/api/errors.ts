@@ -41,6 +41,8 @@ export function parseRequestInput<T>(
 
   const fieldErrors: Record<string, string[]> = {};
 
+  // Preserve complete paths such as values.amountCents so the client can attach
+  // each API error to the corresponding nested form field.
   for (const issue of result.error.issues) {
     const field = issue.path.join(".") || "request";
     const messages = fieldErrors[field] ?? [];
@@ -80,6 +82,8 @@ export function apiErrorHandler(
     return;
   }
 
+  // Unexpected failures are left to Express instead of being disguised as a
+  // known client or business error.
   next(error);
 }
 

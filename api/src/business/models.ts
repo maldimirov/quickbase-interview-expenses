@@ -21,12 +21,18 @@ export enum ExpenseType {
 
 export const HIGH_VALUE_EXPENSE_CENTS = 100_000;
 
+export enum Client {
+  Acme = "Acme",
+  Globex = "Globex",
+  Initech = "Initech",
+}
+
 export interface ExpenseValues {
   expenseType: ExpenseType | null;
   amountCents: number | null;
   description: string | null;
   billable: boolean;
-  client: string | null;
+  client: Client | null;
   additionalJustification: string | null;
   otherReason: string | null;
 }

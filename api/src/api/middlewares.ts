@@ -19,6 +19,8 @@ export function requestLogger(
 ): void {
   const startedAt = performance.now();
 
+  // The finish event contains the final status code and measures the complete
+  // response rather than only the time spent before the handler returns.
   response.on("finish", () => {
     const durationMs = Math.round(performance.now() - startedAt);
 
@@ -35,6 +37,8 @@ export function requireUserId(
   response: Response<ApiErrorResponse, UserIdLocals>,
   next: NextFunction,
 ): void {
+  // This middleware only extracts the request identity.
+  // Resolving the user is left to the business layer, so the HTTP middleware doesn't depend on DB data.
   const parsedUserId = userIdHeaderSchema.safeParse(
     request.header(USER_ID_HEADER),
   );

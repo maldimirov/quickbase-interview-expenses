@@ -17,7 +17,7 @@ import {
 } from "./models.js";
 import { listUsers, readUser } from "./users.js";
 import { validateExpenseForSubmission } from "./validation.js";
-import { getNewStatusForAction } from "./workflow.js";
+import { validateAction } from "./workflow.js";
 
 const FIRST_STATUS_SEQUENCE = 1;
 const STATUS_SEQUENCE_INCREMENT = 1;
@@ -28,6 +28,8 @@ export function listExpenseRequests(userId: string): ExpenseRequest[] {
   const expenseRequestRecords = db.listExpenseRequests();
 
   return expenseRequestRecords.map((expenseRequestRecord) => {
+    // Current status is derived from append-only history instead of being
+    // duplicated as mutable state on the request record.
     const latestStatus = readLatestStatus(expenseRequestRecord.id);
     const expenseRequest = toExpenseRequest(
       expenseRequestRecord,
@@ -68,6 +70,8 @@ export function createExpenseRequest(
 ): ExpenseRequest {
   readKnownUser(userId);
 
+  // The request and its initial history entry form one business operation. A
+  // database-backed implementation should wrap these two writes in a transaction.
   const expenseValuesRecord = toExpenseValuesRecord(values);
   const expenseRequestRecord = db.createExpenseRequest({
     requesterId: userId,
@@ -124,6 +128,8 @@ export function updateExpenseRequest(
     );
   }
 
+  // The early check gives the caller a clear conflict. The DB write repeats the
+  // sequence predicate because only that final check can close a concurrent race.
   if (latestStatus.sequence !== expectedStatusSequence) {
     throwStatusSequenceConflict();
   }
@@ -161,14 +167,18 @@ export function changeExpenseRequestStatus(
     latestStatus,
   );
 
+  // Reject a command that was already stale before evaluating its workflow
+  // rules. The history append below still performs the decisive sequence check.
   if (latestStatus.sequence !== expectedStatusSequence) {
     throwStatusSequenceConflict();
   }
 
-  const newStatus = getNewStatusForAction(action, actor.id, expenseRequest);
+  const newStatus = validateAction(action, actor.id, expenseRequest);
   let assignedApproverId: string | null = null;
 
   if (action === RequestAction.Submit) {
+    // Every submission revalidates the current values and recomputes routing, so
+    // a previous approval assignment is never reused after withdrawal.
     const amountCents = validateExpenseForSubmission(expenseRequest.values);
     const requester = readRequester(expenseRequest.requesterId);
     const users = listUsers();
@@ -187,6 +197,9 @@ export function changeExpenseRequestStatus(
     assignedApproverId,
   };
   const statusHistoryRecord = toStatusHistoryRecord(statusHistoryEntry);
+
+  // The append performs the decisive sequence check. An undefined result means
+  // another transition won after the earlier read.
   const appendedStatusRecord = db.appendStatusHistory(statusHistoryRecord);
 
   if (appendedStatusRecord === undefined) {
@@ -215,6 +228,8 @@ function readKnownUser(userId: string): User {
 }
 
 function readRequester(requesterId: string): User {
+  // The requester ID came from persisted request data, so a missing user record
+  // is an internal consistency failure rather than an authentication failure.
   const requester = readUser(requesterId);
 
   if (requester === undefined) {

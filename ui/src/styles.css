@@ -271,6 +271,19 @@ h2 {
   color: #8a2831;
 }
 
+.field select[aria-invalid="true"],
+.field textarea[aria-invalid="true"],
+.money-input--invalid {
+  border-color: #a83842;
+}
+
+.field-errors {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #8a2831;
+  font-size: 0.82rem;
+}
+
 .money-input {
   display: grid;
   grid-template-columns: auto 1fr;

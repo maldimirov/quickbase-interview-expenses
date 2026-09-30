@@ -5,11 +5,16 @@ import {
   type ExpenseValues,
 } from "./models.js";
 
+// Run these rules only during submission so a Draft can preserve incomplete or
+// temporarily invalid values while the requester is still editing it.
 export function validateExpenseForSubmission(
   values: ExpenseValues,
 ): number {
   const fieldErrors: Record<string, string[]> = {};
   const amountCents = values.amountCents;
+  const requiresAdditionalJustification =
+    amountCents !== null && amountCents >= HIGH_VALUE_EXPENSE_CENTS;
+  const requiresOtherReason = values.expenseType === ExpenseType.Other;
 
   if (values.expenseType === null) {
     fieldErrors["values.expenseType"] = ["Expense type is required"];
@@ -31,9 +36,14 @@ export function validateExpenseForSubmission(
     ];
   }
 
+  if (!values.billable && values.client !== null) {
+    fieldErrors["values.client"] = [
+      "Client is not allowed for a non-billable expense",
+    ];
+  }
+
   if (
-    amountCents !== null &&
-    amountCents >= HIGH_VALUE_EXPENSE_CENTS &&
+    requiresAdditionalJustification &&
     isBlank(values.additionalJustification)
   ) {
     fieldErrors["values.additionalJustification"] = [
@@ -42,11 +52,23 @@ export function validateExpenseForSubmission(
   }
 
   if (
-    values.expenseType === ExpenseType.Other &&
-    isBlank(values.otherReason)
+    !requiresAdditionalJustification &&
+    values.additionalJustification !== null
   ) {
+    fieldErrors["values.additionalJustification"] = [
+      "Extra justification is only allowed for expenses of $1,000 or more",
+    ];
+  }
+
+  if (requiresOtherReason && isBlank(values.otherReason)) {
     fieldErrors["values.otherReason"] = [
       "Other reason is required when the expense type is Other",
+    ];
+  }
+
+  if (!requiresOtherReason && values.otherReason !== null) {
+    fieldErrors["values.otherReason"] = [
+      "Other reason must not be provided unless the expense type is Other",
     ];
   }
 
@@ -58,6 +80,8 @@ export function validateExpenseForSubmission(
     );
   }
 
+  // Collecting errors in a record does not let TypeScript infer that the earlier
+  // null branch cannot reach this point, so guard the invariant explicitly.
   if (amountCents === null) {
     throw new Error("Validated expense request has no amount");
   }

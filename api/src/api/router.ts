@@ -15,7 +15,10 @@ export function createApiRouter() {
   const router = Router();
 
   router.get("/users", listUsersHandler);
-  router.use("/requests", requireUserId); // require a user for all request endpoints
+
+  // Keep the user list public for the demo picker, then require an acting user
+  // for every request route declared below this middleware.
+  router.use("/requests", requireUserId);
   router.get("/requests", listExpenseRequestsHandler);
   router.post("/requests", createExpenseRequestHandler);
   router.get("/requests/:requestId", getExpenseRequestHandler);

@@ -5,27 +5,29 @@ import {
   type ExpenseRequest,
 } from "./models.js";
 
-export function getNewStatusForAction(
+// Derive the next status only after checking both the current server-owned state
+// and the actor. This keeps transition and authorization rules in one decision.
+export function validateAction(
   action: RequestAction,
   actorId: string,
   expenseRequest: ExpenseRequest,
 ): RequestStatus {
   switch (action) {
     case RequestAction.Submit:
-      ensureCurrentStatus(expenseRequest, RequestStatus.Draft, action);
+      ensureStatus(expenseRequest, RequestStatus.Draft, action);
       ensureRequester(expenseRequest, actorId, action);
       return RequestStatus.Submitted;
     case RequestAction.Withdraw:
-      ensureCurrentStatus(expenseRequest, RequestStatus.Submitted, action);
+      ensureStatus(expenseRequest, RequestStatus.Submitted, action);
       ensureRequester(expenseRequest, actorId, action);
       return RequestStatus.Draft;
     case RequestAction.Approve:
-      ensureCurrentStatus(expenseRequest, RequestStatus.Submitted, action);
-      ensureAssignedApprover(expenseRequest, actorId, action);
+      ensureStatus(expenseRequest, RequestStatus.Submitted, action);
+      ensureApprover(expenseRequest, actorId, action);
       return RequestStatus.Approved;
     case RequestAction.Reject:
-      ensureCurrentStatus(expenseRequest, RequestStatus.Submitted, action);
-      ensureAssignedApprover(expenseRequest, actorId, action);
+      ensureStatus(expenseRequest, RequestStatus.Submitted, action);
+      ensureApprover(expenseRequest, actorId, action);
       return RequestStatus.Rejected;
     default:
       throw new BusinessError(
@@ -35,7 +37,7 @@ export function getNewStatusForAction(
   }
 }
 
-function ensureCurrentStatus(
+function ensureStatus(
   expenseRequest: ExpenseRequest,
   expectedStatus: RequestStatus,
   action: RequestAction,
@@ -61,7 +63,7 @@ function ensureRequester(
   }
 }
 
-function ensureAssignedApprover(
+function ensureApprover(
   expenseRequest: ExpenseRequest,
   actorId: string,
   action: RequestAction,

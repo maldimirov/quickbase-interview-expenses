@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  ApiError,
   changeExpenseRequestStatus,
   createExpenseRequest,
   ExpenseType,
@@ -13,6 +14,7 @@ import {
   updateExpenseRequest,
   type ExpenseRequest,
   type ExpenseValues,
+  type FieldErrors,
   type StatusHistoryEntry,
   type StatusCommandAction,
   type User,
@@ -56,6 +58,8 @@ export function App() {
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
   const [pendingStatusAction, setPendingStatusAction] =
     useState<StatusCommandAction | null>(null);
+  const [submissionFieldErrors, setSubmissionFieldErrors] =
+    useState<FieldErrors>({});
   const [pageError, setPageError] = useState<string | null>(null);
 
   const usersById = useMemo(
@@ -68,6 +72,8 @@ export function App() {
   );
 
   useEffect(() => {
+    // Abort the initial request during effect cleanup so a development remount
+    // or component unmount cannot update state from an obsolete response.
     const controller = new AbortController();
 
     async function loadUsers() {
@@ -95,6 +101,8 @@ export function App() {
       return;
     }
 
+    // Cancel an older list request when the acting user changes so a slower
+    // response cannot replace the new user's data.
     const controller = new AbortController();
     const userId = currentUserId;
 
@@ -147,6 +155,8 @@ export function App() {
       return;
     }
 
+    // Detail and history belong to the same selection. Abort both reads when
+    // that selection changes so they cannot update the next request's view.
     const controller = new AbortController();
     const userId = currentUserId;
     const requestId = selectedRequestId;
@@ -188,11 +198,17 @@ export function App() {
     setSelectedRequest(null);
     setHistory([]);
     setIsCreating(false);
+    setSubmissionFieldErrors({});
   }
 
   function handleSelectRequest(requestId: string) {
     setSelectedRequestId(requestId);
     setIsCreating(false);
+    setSubmissionFieldErrors({});
+  }
+
+  function clearSubmissionFieldErrors() {
+    setSubmissionFieldErrors({});
   }
 
   async function handleCreate(values: ExpenseValues) {
@@ -220,6 +236,7 @@ export function App() {
     );
 
     setSelectedRequest(updatedRequest);
+    setSubmissionFieldErrors({});
     setRequests((currentRequests) =>
       currentRequests.map((expenseRequest) => {
         if (expenseRequest.id === updatedRequest.id) {
@@ -238,6 +255,7 @@ export function App() {
 
     setPendingStatusAction(action);
     setPageError(null);
+    setSubmissionFieldErrors({});
 
     try {
       const updatedRequest = await changeExpenseRequestStatus(
@@ -265,6 +283,13 @@ export function App() {
 
       setHistory(updatedHistory);
     } catch (error) {
+      if (error instanceof ApiError && error.fieldErrors !== undefined) {
+        // Submission rules are authoritative on the server. Route its structured
+        // errors back to the Draft form rather than reducing them to a page error.
+        setSubmissionFieldErrors(error.fieldErrors);
+        return;
+      }
+
       setPageError(
         getErrorMessage(error, "Request status could not be updated"),
       );
@@ -324,6 +349,7 @@ export function App() {
               onClick={() => {
                 setIsCreating(true);
                 setSelectedRequestId(null);
+                setSubmissionFieldErrors({});
               }}
             >
               New request
@@ -421,11 +447,15 @@ export function App() {
                       Only the requester can edit this Draft.
                     </p>
                   )}
+                  {/* A request change remounts the stateful form so local inputs
+                      cannot leak into the newly selected Draft. */}
                   <ExpenseForm
                     key={selectedRequest.id}
                     initialValues={selectedRequest.values}
                     submitLabel="Save Draft"
                     disabled={!currentUserIsRequester}
+                    fieldErrors={submissionFieldErrors}
+                    onValuesChange={clearSubmissionFieldErrors}
                     onSubmit={handleUpdate}
                   />
                 </>
@@ -547,6 +577,8 @@ function getAvailableStatusActions(
   expenseRequest: ExpenseRequest | null,
   currentUserId: string | null,
 ): StatusCommandAction[] {
+  // These checks keep the UI relevant, but they are not authorization. The API
+  // independently enforces the same actor and transition rules.
   if (expenseRequest === null || currentUserId === null) {
     return [];
   }

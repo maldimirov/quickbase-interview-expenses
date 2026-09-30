@@ -1,4 +1,5 @@
 my_notes.md
+ui/backend-test/
 node_modules/
 dist/
 *.log

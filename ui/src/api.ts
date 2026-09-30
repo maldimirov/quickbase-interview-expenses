@@ -16,6 +16,14 @@ export enum ExpenseType {
   Other = "Other",
 }
 
+export const HIGH_VALUE_EXPENSE_CENTS = 100_000;
+
+export enum Client {
+  Acme = "Acme",
+  Globex = "Globex",
+  Initech = "Initech",
+}
+
 export enum RequestStatus {
   Draft = "DRAFT",
   Submitted = "SUBMITTED",
@@ -49,7 +57,7 @@ export interface ExpenseValues {
   amountCents: number | null;
   description: string | null;
   billable: boolean;
-  client: string | null;
+  client: Client | null;
   additionalJustification: string | null;
   otherReason: string | null;
 }
@@ -77,10 +85,12 @@ interface ApiRequestOptions extends RequestInit {
   currentUserId?: string;
 }
 
+export type FieldErrors = Record<string, string[]>;
+
 interface ApiErrorBody {
   code: string;
   message: string;
-  fieldErrors?: Record<string, string[]>;
+  fieldErrors?: FieldErrors;
 }
 
 export class ApiError extends Error {
@@ -88,13 +98,15 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
-    public readonly fieldErrors?: Record<string, string[]>,
+    public readonly fieldErrors?: FieldErrors,
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
+// Fetch returns untyped JSON at runtime. Validate every response before it can
+// enter React state, even though the expected shapes are also TypeScript types.
 export async function listUsers(signal: AbortSignal): Promise<User[]> {
   const body = await requestJson("/users", { signal });
 
@@ -269,7 +281,7 @@ function isApiErrorBody(value: unknown): value is ApiErrorBody {
   );
 }
 
-function isFieldErrors(value: unknown): value is Record<string, string[]> {
+function isFieldErrors(value: unknown): value is FieldErrors {
   return (
     isRecord(value) &&
     Object.values(value).every(
@@ -309,7 +321,7 @@ function isExpenseValues(value: unknown): value is ExpenseValues {
     (value.amountCents === null || Number.isInteger(value.amountCents)) &&
     isNullableString(value.description) &&
     typeof value.billable === "boolean" &&
-    isNullableString(value.client) &&
+    (value.client === null || isClient(value.client)) &&
     isNullableString(value.additionalJustification) &&
     isNullableString(value.otherReason)
   );
@@ -334,6 +346,10 @@ function isUserRole(value: unknown): value is UserRole {
 
 function isExpenseType(value: unknown): value is ExpenseType {
   return Object.values(ExpenseType).includes(value as ExpenseType);
+}
+
+function isClient(value: unknown): value is Client {
+  return Object.values(Client).includes(value as Client);
 }
 
 function isRequestStatus(value: unknown): value is RequestStatus {
