@@ -37,13 +37,15 @@ export enum RequestAction {
   Withdraw = "WITHDRAW",
   Approve = "APPROVE",
   Reject = "REJECT",
+  Reopen = "REOPEN",
 }
 
 export type StatusCommandAction =
   | RequestAction.Submit
   | RequestAction.Withdraw
   | RequestAction.Approve
-  | RequestAction.Reject;
+  | RequestAction.Reject
+  | RequestAction.Reopen;
 
 export interface User {
   id: string;

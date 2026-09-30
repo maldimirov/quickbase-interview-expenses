@@ -36,6 +36,7 @@ const STATUS_ACTION_LABELS: Record<StatusCommandAction, string> = {
   [RequestAction.Withdraw]: "Withdraw",
   [RequestAction.Approve]: "Approve",
   [RequestAction.Reject]: "Reject",
+  [RequestAction.Reopen]: "Reopen",
 };
 
 const STATUS_ACTION_BUTTON_CLASSES: Record<StatusCommandAction, string> = {
@@ -43,6 +44,7 @@ const STATUS_ACTION_BUTTON_CLASSES: Record<StatusCommandAction, string> = {
   [RequestAction.Withdraw]: "secondary-button",
   [RequestAction.Approve]: "primary-button",
   [RequestAction.Reject]: "danger-button",
+  [RequestAction.Reopen]: "secondary-button",
 };
 
 export function App() {
@@ -603,6 +605,13 @@ function getAvailableStatusActions(
     expenseRequest.requesterId === currentUserId
   ) {
     return [RequestAction.Submit];
+  }
+
+  if (
+    expenseRequest.status === RequestStatus.Rejected &&
+    expenseRequest.requesterId === currentUserId
+  ) {
+    return [RequestAction.Reopen];
   }
 
   if (expenseRequest.status !== RequestStatus.Submitted) {

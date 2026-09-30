@@ -59,6 +59,7 @@ export enum RequestAction {
   Withdraw = "WITHDRAW",
   Approve = "APPROVE",
   Reject = "REJECT",
+  Reopen = "REOPEN",
 }
 
 export interface StatusHistoryEntry {

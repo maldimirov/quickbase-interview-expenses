@@ -29,6 +29,10 @@ export function validateAction(
       ensureStatus(expenseRequest, RequestStatus.Submitted, action);
       ensureApprover(expenseRequest, actorId, action);
       return RequestStatus.Rejected;
+    case RequestAction.Reopen:
+      ensureStatus(expenseRequest, RequestStatus.Rejected, action);
+      ensureRequester(expenseRequest, actorId, action);
+      return RequestStatus.Draft;
     default:
       throw new BusinessError(
         BusinessErrorCode.StatusTransitionInvalid,

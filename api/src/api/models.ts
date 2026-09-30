@@ -70,6 +70,7 @@ export const changeExpenseRequestStatusBodySchema = z
       RequestAction.Withdraw,
       RequestAction.Approve,
       RequestAction.Reject,
+      RequestAction.Reopen,
     ]),
     expectedStatusSequence: z.number().int().positive(),
   })

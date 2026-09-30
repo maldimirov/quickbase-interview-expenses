@@ -136,11 +136,12 @@ SUBMIT:   Draft     -> Submitted
 WITHDRAW: Submitted -> Draft
 APPROVE:  Submitted -> Approved
 REJECT:   Submitted -> Rejected
+REOPEN:   Rejected  -> Draft
 ```
 
 `WITHDRAW` lets the requester correct a submitted request before it is decided. The withdrawal is visible in history, removes the current approval assignment, and prevents the previous approver from acting. Resubmission validates the request again and recomputes the approver.
 
-The rejected-request extension is implemented last. It adds an owner-only `REOPEN` action from Rejected to Draft, after which the existing update and submit operations are reused.
+The rejected-request extension adds an owner-only `REOPEN` action from Rejected to Draft, after which the existing update and submit operations are reused. Resubmission revalidates the current values, recomputes the approver, and records another `SUBMIT` history entry.
 
 ### Approval routing
 
@@ -164,7 +165,7 @@ Expenses below $1,000 route to the requester's manager. Missing and self-referen
 - Per-operation workflow endpoints were replaced by one status endpoint with an enum-backed action, making later operations additive without adding routes.
 - The initial proposal made Submitted requests unable to return to Draft. This was revised to allow an explicit owner-only `WITHDRAW` transition, keeping edits restricted to Draft while making withdrawal visible to the approver and in history.
 - Status sequence concurrency protects transitions and edit-versus-transition races. Concurrent Draft edits intentionally remain last-write-wins rather than adding a separate request revision.
-- The rejected-request flow remains in scope but is deliberately implemented as the final separate iteration.
+- The rejected-request flow was deliberately implemented as the final separate feature iteration so the core workflow remained reviewable on its own.
 - The separate business `ExpenseRequestDetails` model was removed because every current request operation returns the latest status fields. One complete business `ExpenseRequest` is used until endpoints require genuinely different shapes.
 - Server submission validation was pulled into the workflow iteration because accepting `SUBMIT` before enforcing the assignment rules would expose an invalid API state. The following UI iteration added the conditional inputs, matching Draft warnings, and inline field-error presentation.
 - Time estimates and timebox-driven cuts are not used to guide implementation scope.
@@ -216,5 +217,12 @@ The conditional form and API contract were verified on 2026-09-30:
 - An incomplete conditional Draft retained its missing extra justification and Other reason, then submission returned both field errors with `422`.
 - A Draft containing client, extra-justification, and Other-reason values outside their applicable conditions was saved, then submission returned all three inverse field errors with `422`.
 - Replacing the Draft with complete conditional values succeeded, and submitting its high-value amount routed it to finance.
+
+The rejected-request extension was manually verified on 2026-09-30:
+
+- The assigned manager rejected a submitted request, producing a Rejected request with no active approver.
+- A non-owner received `403` when attempting to reopen it, while the requester reopened it to Draft with the next status sequence.
+- The requester edited the reopened Draft and resubmitted it. Submission validation ran again, the changed high-value amount routed to finance, and history contained `REJECT`, `REOPEN`, and the new `SUBMIT` in sequence order.
+- Attempting to reopen an Approved request returned `409` because REOPEN is valid only from Rejected.
 
 No automated tests have been added or run.
