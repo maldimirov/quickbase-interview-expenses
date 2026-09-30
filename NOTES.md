@@ -115,6 +115,8 @@ Only Draft requests can be edited. Editing request data and changing status are 
 
 The Draft form exposes the base expense type, amount, description, and billable fields. It conditionally shows a client dropdown for billable expenses, extra justification for amounts of at least $1,000, and an Other reason for the Other expense type. Its warning list covers the same submission rules without preventing an incomplete Draft from being saved. A Draft always uses the form view, but its native form controls are disabled when the selected user is not the requester. Conditional values are sent as `null` when their controlling condition no longer applies, preventing stale hidden values from being retained.
 
+The form uses a simple interaction-based dirty flag rather than comparing complete values. Save Draft is disabled until a field changes, while Submit is disabled until those changes are saved. Returning a field to its original value still leaves the form dirty and requires an explicit save.
+
 Client is a small enum owned by the business layer, with `Acme`, `Globex`, and `Initech` as its current values. The API imports that enum for request validation, while the UI mirrors the public API values for its dropdown and runtime response checks.
 
 ### Workflow endpoint and transitions

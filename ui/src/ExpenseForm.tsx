@@ -22,7 +22,7 @@ interface ExpenseFormProps {
   submitLabel: string;
   disabled?: boolean;
   fieldErrors?: FieldErrors;
-  onValuesChange?: () => void;
+  onDirtyChange?: (hasUnsavedChanges: boolean) => void;
   onSubmit: (values: ExpenseValues) => Promise<void>;
 }
 
@@ -31,7 +31,7 @@ export function ExpenseForm({
   submitLabel,
   disabled = false,
   fieldErrors = {},
-  onValuesChange,
+  onDirtyChange,
   onSubmit,
 }: ExpenseFormProps) {
   const [expenseType, setExpenseType] = useState<ExpenseType | "">(
@@ -53,6 +53,9 @@ export function ExpenseForm({
   const [otherReason, setOtherReason] = useState(
     initialValues.otherReason ?? "",
   );
+  // Track interaction instead of comparing complete values. Returning a field
+  // to its original value still requires an explicit save.
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -105,6 +108,8 @@ export function ExpenseForm({
         draftValues.additionalJustification ?? "",
       );
       setOtherReason(draftValues.otherReason ?? "");
+      setHasUnsavedChanges(false);
+      onDirtyChange?.(false);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Request could not be saved";
@@ -113,6 +118,11 @@ export function ExpenseForm({
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function markFormChanged() {
+    setHasUnsavedChanges(true);
+    onDirtyChange?.(true);
   }
 
   return (
@@ -135,7 +145,7 @@ export function ExpenseForm({
             value={expenseType}
             onChange={(event) => {
               setExpenseType(event.target.value as ExpenseType | "");
-              onValuesChange?.();
+              markFormChanged();
             }}
           >
             <option value="">Not selected</option>
@@ -160,7 +170,7 @@ export function ExpenseForm({
               value={otherReason}
               onChange={(event) => {
                 setOtherReason(event.target.value);
-                onValuesChange?.();
+                markFormChanged();
               }}
             />
             <FieldErrorMessages
@@ -191,7 +201,7 @@ export function ExpenseForm({
               value={amount}
               onChange={(event) => {
                 setAmount(event.target.value);
-                onValuesChange?.();
+                markFormChanged();
               }}
             />
           </div>
@@ -218,7 +228,7 @@ export function ExpenseForm({
               value={additionalJustification}
               onChange={(event) => {
                 setAdditionalJustification(event.target.value);
-                onValuesChange?.();
+                markFormChanged();
               }}
             />
             <FieldErrorMessages
@@ -236,7 +246,7 @@ export function ExpenseForm({
             value={description}
             onChange={(event) => {
               setDescription(event.target.value);
-              onValuesChange?.();
+              markFormChanged();
             }}
           />
           <FieldErrorMessages
@@ -250,7 +260,7 @@ export function ExpenseForm({
             checked={billable}
             onChange={(event) => {
               setBillable(event.target.checked);
-              onValuesChange?.();
+              markFormChanged();
             }}
           />
           Billable to a client
@@ -265,7 +275,7 @@ export function ExpenseForm({
               value={client}
               onChange={(event) => {
                 setClient(event.target.value as Client | "");
-                onValuesChange?.();
+                markFormChanged();
               }}
             >
               <option value="">Not selected</option>
@@ -292,7 +302,11 @@ export function ExpenseForm({
 
         {saveError !== null && <p className="form-error">{saveError}</p>}
 
-        <button className="primary-button" type="submit">
+        <button
+          className="primary-button"
+          type="submit"
+          disabled={!hasUnsavedChanges}
+        >
           {isSaving ? "Saving…" : submitLabel}
         </button>
       </fieldset>

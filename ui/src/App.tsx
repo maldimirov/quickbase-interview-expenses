@@ -60,6 +60,7 @@ export function App() {
     useState<StatusCommandAction | null>(null);
   const [submissionFieldErrors, setSubmissionFieldErrors] =
     useState<FieldErrors>({});
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
 
   const usersById = useMemo(
@@ -199,16 +200,22 @@ export function App() {
     setHistory([]);
     setIsCreating(false);
     setSubmissionFieldErrors({});
+    setHasUnsavedChanges(false);
   }
 
   function handleSelectRequest(requestId: string) {
     setSelectedRequestId(requestId);
     setIsCreating(false);
     setSubmissionFieldErrors({});
+    setHasUnsavedChanges(false);
   }
 
-  function clearSubmissionFieldErrors() {
-    setSubmissionFieldErrors({});
+  function handleDirtyChange(formHasUnsavedChanges: boolean) {
+    setHasUnsavedChanges(formHasUnsavedChanges);
+
+    if (formHasUnsavedChanges) {
+      setSubmissionFieldErrors({});
+    }
   }
 
   async function handleCreate(values: ExpenseValues) {
@@ -221,6 +228,7 @@ export function App() {
     setRequests((currentRequests) => [...currentRequests, createdRequest]);
     setIsCreating(false);
     setSelectedRequestId(createdRequest.id);
+    setHasUnsavedChanges(false);
   }
 
   async function handleUpdate(values: ExpenseValues) {
@@ -350,6 +358,7 @@ export function App() {
                 setIsCreating(true);
                 setSelectedRequestId(null);
                 setSubmissionFieldErrors({});
+                setHasUnsavedChanges(false);
               }}
             >
               New request
@@ -396,7 +405,10 @@ export function App() {
                 <button
                   className="text-button"
                   type="button"
-                  onClick={() => setIsCreating(false)}
+                  onClick={() => {
+                    setIsCreating(false);
+                    setHasUnsavedChanges(false);
+                  }}
                 >
                   Cancel
                 </button>
@@ -455,7 +467,7 @@ export function App() {
                     submitLabel="Save Draft"
                     disabled={!currentUserIsRequester}
                     fieldErrors={submissionFieldErrors}
-                    onValuesChange={clearSubmissionFieldErrors}
+                    onDirtyChange={handleDirtyChange}
                     onSubmit={handleUpdate}
                   />
                 </>
@@ -470,7 +482,10 @@ export function App() {
                       className={STATUS_ACTION_BUTTON_CLASSES[action]}
                       key={action}
                       type="button"
-                      disabled={pendingStatusAction !== null}
+                      disabled={
+                        pendingStatusAction !== null ||
+                        (action === RequestAction.Submit && hasUnsavedChanges)
+                      }
                       onClick={() => void handleStatusAction(action)}
                     >
                       {pendingStatusAction === action
